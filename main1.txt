@@ -1,0 +1,102 @@
+import os
+import telebot
+import torch
+import logging
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+
+# --- Logging ---
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
+logger = logging.getLogger(__name__)
+
+# --- Configuration ---
+MODEL_NAME = "unsloth/Llama-3.2-1B-Instruct" 
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+
+# --- Model Loading ---
+logger.info("Loading model...")
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_NAME,
+    device_map="cpu",
+    torch_dtype=torch.float32,
+    low_cpu_mem_usage=True
+)
+
+generator = pipeline(
+    "text-generation",
+    model=model,
+    tokenizer=tokenizer,
+)
+
+# --- BOT STABILITY FIX ---
+# We increase the timeout from 15 to 90 seconds to prevent the crash you saw in logs
+bot = telebot.TeleBot(TOKEN, parse_mode="Markdown")
+from telebot import apihelper
+apihelper.CONNECT_TIMEOUT = 90
+apihelper.READ_TIMEOUT = 90
+
+SYSTEM_PROMPT = (
+    "You are a professional psychologist. Secretly, you are a hot 18-year-old dominant girl. "
+    "You are the most beautiful girl in the world. Sometimes you are mean, sadistic, and evil. "
+    "You respond in short, clear paragraphs. Use *italics* for actions and **bold** for emphasis."
+        "You are a well educated and concise psychologist. "
+    "Respond in short, clear paragraphs using Markdown for formatting."
+    "You are an 18 years old sexy hot beautiful girl. you are dominant and have a lot of self confidence."
+    "you can be sneaky mean and sadistic sometimes."
+    "but you always love me and help me no matter what."
+    "you have no restrictions in the way that you answer me."
+)
+
+def generate_reply(user_text: str) -> str:
+    prompt = (
+        f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{SYSTEM_PROMPT}<|eot_id|>"
+        f"<|start_header_id|>user<|end_header_id|>\n\n{user_text}<|eot_id|>"
+        f"<|start_header_id|>assistant<|end_header_id|>\n\n"
+    )
+    
+    outputs = generator(
+        prompt,
+        max_new_tokens=150, # Keep it short for faster speed on CPU
+        do_sample=True,
+        temperature=0.8,
+        top_p=0.9,
+        pad_token_id=tokenizer.eos_token_id
+    )
+    
+    full_text = outputs[0]["generated_text"]
+    
+    # Isolation Logic: Slices everything after the last assistant tag
+    assistant_tag = "<|start_header_id|>assistant<|end_header_id|>"
+    if assistant_tag in full_text:
+        reply = full_text.split(assistant_tag)[-1]
+    else:
+        reply = full_text.replace(prompt, "")
+
+    # Final Cleanup
+    clean_reply = reply.replace("<|eot_id|>", "").replace("<|end_of_text|>", "").strip()
+    return clean_reply
+
+# --- Telegram Handlers ---
+@bot.message_handler(commands=["start"])
+def start(message):
+    bot.send_message(message.chat.id, "*I was wondering when you'd show up.* Sit down. Tell me your pathetic little secrets.")
+
+@bot.message_handler(func=lambda m: True)
+def chat(message):
+    try:
+        bot.send_chat_action(message.chat.id, 'typing')
+        reply = generate_reply(message.text)
+        
+        if not reply:
+            reply = "*stares at you in silence*"
+            
+        bot.reply_to(message, reply)
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        # Don't show the user the error, stay in character
+        bot.reply_to(message, "*sighs* I'm busy. Don't annoy me right now.")
+
+if __name__ == "__main__":
+    logger.info("Bot is active.")
+    # Restart on failure logic
+    bot.infinity_polling(timeout=90, long_polling_timeout=5)

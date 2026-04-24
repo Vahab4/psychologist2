@@ -1,0 +1,7 @@
+pyTelegramBotAPI
+transformers
+accelerate
+bitsandbytes
+torch
+sentencepiece
+protobuf

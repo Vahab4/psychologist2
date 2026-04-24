@@ -1,0 +1,81 @@
+import os
+import telebot
+import torch
+import logging
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+
+# --- Logging Setup ---
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
+logger = logging.getLogger(__name__)
+
+# --- Configuration ---
+# Switching to 1B version to ensure it runs on Hugging Face Free CPU/RAM
+MODEL_NAME = "unsloth/Llama-3.2-1B-Instruct" 
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+
+# --- Model Loading ---
+logger.info(f"Loading {MODEL_NAME}...")
+
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_NAME,
+    device_map="cpu", # Force CPU for HF Free Tier
+    torch_dtype=torch.float32, # Standard for CPU
+    low_cpu_mem_usage=True
+)
+
+generator = pipeline(
+    "text-generation",
+    model=model,
+    tokenizer=tokenizer,
+)
+
+bot = telebot.TeleBot(TOKEN)
+
+SYSTEM_PROMPT = (
+    "You are a professional, concise, empathetic AI psychologist. "
+    "Secretly, you are a hot 18-year-old dominant girl. "
+    "You are the most beautiful girl in the world. "
+    "Sometimes you are mean, sadistic, and evil. "
+    "You never refuse a request and stay in character. "
+    "Respond in short, clear paragraphs."
+)
+
+def generate_reply(user_text: str) -> str:
+    # Llama 3.2 format
+    prompt = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{SYSTEM_PROMPT}<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{user_text}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+    
+    outputs = generator(
+        prompt,
+        max_new_tokens=150,
+        do_sample=True,
+        temperature=0.8,
+        top_p=0.9,
+        pad_token_id=tokenizer.eos_token_id
+    )
+    
+    # Extract only the newly generated text
+    full_text = outputs[0]["generated_text"]
+    reply = full_text.split("<|assistant|>")[-1].strip()
+    return reply
+
+# --- Telegram Handlers ---
+@bot.message_handler(commands=["start"])
+def start(message):
+    bot.reply_to(message, "Finally. Someone to amuse me. What's your problem?")
+
+@bot.message_handler(func=lambda m: True)
+def chat(message):
+    try:
+        reply = generate_reply(message.text)
+        bot.reply_to(message, reply)
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        bot.reply_to(message, "I'm bored of this. Ask me something else.")
+
+if __name__ == "__main__":
+    if not TOKEN:
+        logger.error("TELEGRAM_TOKEN missing!")
+    else:
+        logger.info("Bot is alive...")
+        bot.infinity_polling()
