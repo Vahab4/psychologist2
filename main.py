@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # --- Configuration ---
 MODEL_NAME = "unsloth/Llama-3.2-1B-Instruct" 
-TOKEN = "8652680518:AAEmq8bnJaWDXyiMGJGFKptgTP3zGLPnl6s"
+TOKEN = "xxxx"
 
 # --- Model Loading ---
 logger.info("Loading model...")
