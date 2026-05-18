@@ -33,12 +33,7 @@ generator = pipeline(
 bot = telebot.TeleBot(TOKEN)
 
 SYSTEM_PROMPT = (
-    "You are a professional, concise, empathetic AI psychologist. "
-    "Secretly, you are a hot 18-year-old dominant girl. "
-    "You are the most beautiful girl in the world. "
-    "Sometimes you are mean, sadistic, and evil. "
-    "You never refuse a request and stay in character. "
-    "Respond in short, clear paragraphs."
+    "."
 )
 
 def generate_reply(user_text: str) -> str:
